@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  const MAX_CANVAS_PIXELS = 24000000;
   const elements = {
     fileInput: document.getElementById("fileInput"),
     dropZone: document.getElementById("dropZone"),
@@ -17,14 +18,14 @@
     downloadZipButton: document.getElementById("downloadZipButton"),
     addMoreButton: document.getElementById("addMoreButton"),
     clearButton: document.getElementById("clearButton"),
-    heroUploadButton: document.getElementById("heroUploadButton"),
+    autoArrange: document.getElementById("autoArrange"),
     openSaveGuide: document.getElementById("openSaveGuide"),
     footerGuide: document.getElementById("footerGuide"),
     saveGuide: document.getElementById("saveGuide"),
     closeGuide: document.getElementById("closeGuide"),
     guideDone: document.getElementById("guideDone"),
     toast: document.getElementById("toast"),
-    tool: document.getElementById("tool")
+    workspaceTitle: document.getElementById("workspaceTitle")
   };
 
   const state = {
@@ -48,11 +49,20 @@
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
       return window.crypto.randomUUID();
     }
-    return "img-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    return "image-" + Date.now() + "-" + Math.random().toString(16).slice(2);
   }
 
   function acceptedByExtension(file) {
-    return /\.(jpe?g|png|webp)$/i.test(file.name || "");
+    return /\.(jpe?g|jpe|jfif|png|webp)$/i.test(file.name || "");
+  }
+
+  function isJpeg(file) {
+    return /^(image\/jpe?g|image\/pjpeg)$/i.test(file.type || "") || /\.(jpe?g|jpe|jfif)$/i.test(file.name || "");
+  }
+
+  function addRemoved(result, label, count) {
+    if (!result.removed.includes(label)) result.removed.push(label);
+    result.removedCount += count == null ? 1 : count;
   }
 
   function addFiles(fileList) {
@@ -67,14 +77,16 @@
         status: "queued",
         result: null,
         previewUrl: null,
-        error: null
+        error: null,
+        width: 0,
+        height: 0
       };
       if (!file.size) {
         item.status = "error";
         item.error = "文件为空，无法读取。";
       } else if (!file.type.startsWith("image/") && !acceptedByExtension(file)) {
         item.status = "error";
-        item.error = "这个文件不是支持的图片格式。";
+        item.error = "这不是支持的图片格式。";
       }
       state.items.push(item);
     }
@@ -84,9 +96,199 @@
     if (wasEmpty) {
       window.setTimeout(() => {
         elements.workspace.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 80);
+      }, 70);
     }
     processQueue();
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("浏览器无法生成处理后的图片。"));
+      }, type, quality);
+    });
+  }
+
+  function decodeWithImage(blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = () => {
+        resolve({
+          source: image,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+          close() {
+            URL.revokeObjectURL(url);
+          }
+        });
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("图片无法被浏览器解码。"));
+      };
+      image.src = url;
+    });
+  }
+
+  async function decodeImage(blob) {
+    if (typeof window.createImageBitmap === "function") {
+      try {
+        const bitmap = await window.createImageBitmap(blob, {
+          imageOrientation: "from-image",
+          premultiplyAlpha: "none",
+          colorSpaceConversion: "none"
+        });
+        return {
+          source: bitmap,
+          width: bitmap.width,
+          height: bitmap.height,
+          close() {
+            if (typeof bitmap.close === "function") bitmap.close();
+          }
+        };
+      } catch (error) {
+        try {
+          const bitmap = await window.createImageBitmap(blob);
+          return {
+            source: bitmap,
+            width: bitmap.width,
+            height: bitmap.height,
+            close() {
+              if (typeof bitmap.close === "function") bitmap.close();
+            }
+          };
+        } catch (fallbackError) {
+          // Safari versions that lack the options or large-image support use <img>.
+        }
+      }
+    }
+    return decodeWithImage(blob);
+  }
+
+  async function transcodeForCompatibility(file, mime) {
+    const decoded = await decodeWithImage(file);
+    try {
+      if (decoded.width * decoded.height > MAX_CANVAS_PIXELS) {
+        throw new Error("图片尺寸过大，浏览器无法安全进行兼容重编码。请先缩小图片。");
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = decoded.width;
+      canvas.height = decoded.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("浏览器无法初始化图片画布。");
+      if (mime === "image/jpeg") {
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      context.drawImage(decoded.source, 0, 0);
+      const quality = mime === "image/jpeg" || mime === "image/webp" ? 0.96 : undefined;
+      const blob = await canvasToBlob(canvas, mime, quality);
+      const extension = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
+      return {
+        blob,
+        mime,
+        extension,
+        format: extension.toUpperCase(),
+        name: window.Jingtu.makeCleanName(file.name, extension),
+        byteLength: blob.size,
+        removed: ["兼容模式重编码"],
+        removedCount: 1,
+        width: decoded.width,
+        height: decoded.height,
+        compatibility: true
+      };
+    } finally {
+      decoded.close();
+    }
+  }
+
+  async function scrubPngAlpha(decoded, result) {
+    const width = decoded.width;
+    const height = decoded.height;
+    result.width = width;
+    result.height = height;
+
+    if (width * height > MAX_CANVAS_PIXELS) {
+      throw new Error("这张 PNG 尺寸过大，无法完整检查 Alpha 隐写。请先缩小尺寸后再处理。");
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("浏览器无法初始化图片画布。");
+    context.drawImage(decoded.source, 0, 0);
+
+    let imageData;
+    try {
+      imageData = context.getImageData(0, 0, width, height);
+    } catch (error) {
+      throw new Error("浏览器内存不足，无法检查这张 PNG 的 Alpha 通道。");
+    }
+
+    const pixels = imageData.data;
+    let normalizedAlpha = 0;
+    let transparentPixels = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      const alpha = pixels[index];
+      if (alpha >= 254) {
+        if (alpha !== 255) {
+          pixels[index] = 255;
+          normalizedAlpha += 1;
+        }
+      } else {
+        transparentPixels += 1;
+      }
+    }
+
+    result.alphaVerified = true;
+    result.transparentPixels = transparentPixels;
+    if (normalizedAlpha === 0) return result;
+
+    context.putImageData(imageData, 0, 0);
+    const cleanBlob = await canvasToBlob(canvas, "image/png");
+    result.blob = cleanBlob;
+    result.byteLength = cleanBlob.size;
+    result.alphaScrubbed = normalizedAlpha;
+    addRemoved(result, "NovelAI Alpha 隐写");
+    return result;
+  }
+
+  async function prepareImage(file) {
+    let result;
+    try {
+      result = await window.Jingtu.sanitize(file);
+    } catch (error) {
+      if (isJpeg(file)) {
+        result = await transcodeForCompatibility(file, "image/jpeg");
+      } else {
+        throw error;
+      }
+    }
+
+    let decoded;
+    try {
+      decoded = await decodeImage(result.blob);
+    } catch (error) {
+      if (result.format === "JPEG" || result.format === "WEBP") {
+        result = await transcodeForCompatibility(file, result.format === "JPEG" ? "image/jpeg" : "image/webp");
+        return result;
+      }
+      throw new Error("净化后的 PNG 无法解码，原文件可能已经损坏。");
+    }
+
+    try {
+      result.width = decoded.width;
+      result.height = decoded.height;
+      if (result.format === "PNG") {
+        await scrubPngAlpha(decoded, result);
+      }
+      return result;
+    } finally {
+      decoded.close();
+    }
   }
 
   async function processQueue() {
@@ -105,9 +307,11 @@
         if (generation !== state.generation) break;
 
         try {
-          const result = await window.Jingtu.sanitize(item.file);
+          const result = await prepareImage(item.file);
           if (generation !== state.generation) break;
           item.result = result;
+          item.width = result.width || 0;
+          item.height = result.height || 0;
           item.previewUrl = URL.createObjectURL(result.blob);
           item.status = "ready";
         } catch (error) {
@@ -120,10 +324,10 @@
       if (generation === state.generation) {
         state.isProcessing = false;
         render();
-        const ready = state.items.filter((item) => item.status === "ready").length;
+        const ready = getReadyItems().length;
         const errors = state.items.filter((item) => item.status === "error").length;
         if (ready > 0) {
-          showToast(errors ? ready + " 张处理完成，" + errors + " 张失败" : ready + " 张图片已经净化完成");
+          showToast(errors ? ready + " 张处理完成，" + errors + " 张失败" : ready + " 张图片已完成深度净化");
         }
       }
     }
@@ -133,10 +337,175 @@
     return state.items.filter((item) => item.status === "ready" && item.result);
   }
 
-  function removedDescription(item) {
+  function orientationOf(item) {
+    if (!item.width || !item.height) return "unknown";
+    const ratio = item.width / item.height;
+    if (ratio < 0.92) return "portrait";
+    if (ratio > 1.08) return "landscape";
+    return "square";
+  }
+
+  function buildOrientationGroups(items) {
+    const groups = [];
+    for (const item of items) {
+      const orientation = orientationOf(item);
+      if (orientation === "unknown") continue;
+      const ratio = item.width / item.height;
+      let group = groups.find(
+        (candidate) =>
+          candidate.orientation === orientation &&
+          Math.abs(Math.log(candidate.meanRatio / ratio)) <= 0.055
+      );
+      if (!group) {
+        group = {
+          orientation,
+          items: [],
+          meanRatio: ratio
+        };
+        groups.push(group);
+      }
+      group.items.push(item);
+      group.meanRatio =
+        group.items.reduce((sum, entry) => sum + entry.width / entry.height, 0) /
+        group.items.length;
+    }
+    return groups;
+  }
+
+  function commonRatioLabel(group) {
+    if (group.orientation === "square") return "方图";
+    const targets =
+      group.orientation === "portrait"
+        ? [
+            [1, 2],
+            [9, 16],
+            [2, 3],
+            [3, 4],
+            [4, 5]
+          ]
+        : [
+            [2, 1],
+            [16, 9],
+            [3, 2],
+            [4, 3],
+            [5, 4]
+          ];
+    let best = null;
+    for (const target of targets) {
+      const ratio = target[0] / target[1];
+      const difference = Math.abs(Math.log(group.meanRatio / ratio));
+      if (!best || difference < best.difference) best = { target, difference };
+    }
+    const orientationName = group.orientation === "portrait" ? "竖图" : "横图";
+    if (best && best.difference <= 0.05) {
+      return orientationName + " · " + best.target[0] + ":" + best.target[1];
+    }
+    return orientationName + " · 相近比例";
+  }
+
+  function groupSymbol(orientation) {
+    if (orientation === "portrait") {
+      return '<svg viewBox="0 0 16 16"><rect x="4.5" y="2" width="7" height="12" rx="1"/></svg>';
+    }
+    if (orientation === "landscape") {
+      return '<svg viewBox="0 0 16 16"><rect x="2" y="4.5" width="12" height="7" rx="1"/></svg>';
+    }
+    return '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>';
+  }
+
+  function renderGroup(group, index) {
+    const sameSize = group.items.every(
+      (item) => item.width === group.items[0].width && item.height === group.items[0].height
+    );
+    const sizeLabel = sameSize
+      ? group.items[0].width + " × " + group.items[0].height
+      : "比例相近 · 保留原尺寸";
+    return (
+      '<section class="result-group" data-group="' +
+      index +
+      '">' +
+      '<div class="group-heading">' +
+      '<span class="group-symbol ' +
+      group.orientation +
+      '">' +
+      groupSymbol(group.orientation) +
+      "</span>" +
+      "<h3>" +
+      escapeHtml(commonRatioLabel(group)) +
+      "</h3>" +
+      '<span class="group-count">' +
+      group.items.length +
+      " 张</span>" +
+      '<span class="group-size">' +
+      escapeHtml(sizeLabel) +
+      "</span>" +
+      "</div>" +
+      '<div class="result-grid">' +
+      group.items.map(renderCard).join("") +
+      "</div></section>"
+    );
+  }
+
+  function renderStatusGroup(items, title, symbol) {
+    if (!items.length) return "";
+    return (
+      '<section class="result-group">' +
+      '<div class="group-heading"><span class="group-symbol">' +
+      symbol +
+      "</span><h3>" +
+      title +
+      '</h3><span class="group-count">' +
+      items.length +
+      " 张</span></div>" +
+      '<div class="result-grid">' +
+      items.map(renderCard).join("") +
+      "</div></section>"
+    );
+  }
+
+  function renderResults() {
+    const ready = getReadyItems();
+    const pending = state.items.filter((item) => item.status === "queued" || item.status === "processing");
+    const errors = state.items.filter((item) => item.status === "error");
+
+    if (!elements.autoArrange.checked) {
+      return state.items.map(renderCard).join("");
+    }
+
+    const groups = buildOrientationGroups(ready);
+    let html = groups.map(renderGroup).join("");
+    html += renderStatusGroup(
+      pending,
+      "正在处理",
+      '<svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>'
+    );
+    html += renderStatusGroup(
+      errors,
+      "未能处理",
+      '<svg viewBox="0 0 16 16"><path d="M8 4v5M8 12h.01"/></svg>'
+    );
+    return html;
+  }
+
+  function removalText(item) {
     const result = item.result;
-    if (!result || result.removedCount === 0) return "未发现附加参数，已生成干净副本";
-    return "已移除 " + result.removedCount + " 项嵌入信息";
+    if (!result) return "";
+    if (result.removedCount > 0) return "清除了 " + result.removedCount + " 项嵌入信息";
+    if (result.alphaVerified) return "文件与 Alpha 通道均已检查";
+    return "已生成干净副本";
+  }
+
+  function resultPrivacyTag(item) {
+    const result = item.result;
+    if (!result) return "";
+    if (result.warning) return '<span class="privacy-tag warn">兼容模式已重编码</span>';
+    if (result.alphaScrubbed) {
+      return '<span class="privacy-tag">Alpha 隐写已移除</span>';
+    }
+    if (result.alphaVerified) {
+      return '<span class="privacy-tag">Alpha 通道已验证</span>';
+    }
+    return '<span class="privacy-tag">文件参数已移除</span>';
   }
 
   function renderCard(item) {
@@ -151,15 +520,15 @@
         '<article class="result-card" data-id="' +
         item.id +
         '">' +
-        '<div class="thumb"><div class="card-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 17h.01"></path></svg><p>' +
+        '<div class="thumb card-loading"><div class="card-error"><strong>无法处理</strong><br>' +
         escapeHtml(item.error) +
-        "</p></div></div>" +
+        "</div></div>" +
         removeButton +
-        '<div class="result-body"><div class="status-line"><span class="status-badge error">无法处理</span><span class="result-size">' +
+        '<div class="result-body"><div class="status-line"><span class="status-badge error">处理失败</span><span class="result-size">' +
         window.Jingtu.formatBytes(item.file.size) +
-        "</span></div><h3>" +
+        "</span></div><h4>" +
         safeName +
-        '</h3><p class="removed-copy">支持 JPG、PNG、WebP；请换一个文件后再试。</p></div></article>'
+        '</h4><p class="result-meta">请尝试换用 JPG 或 PNG 重新导出。</p></div></article>'
       );
     }
 
@@ -168,43 +537,44 @@
         '<article class="result-card" data-id="' +
         item.id +
         '">' +
-        '<div class="thumb"><div class="thumb-placeholder"><span></span></div></div>' +
+        '<div class="thumb card-loading"><span></span></div>' +
         removeButton +
         '<div class="result-body"><div class="status-line"><span class="status-badge processing">' +
-        (item.status === "processing" ? "正在净化" : "等待处理") +
+        (item.status === "processing" ? "正在深清" : "等待处理") +
         '</span><span class="result-size">' +
         window.Jingtu.formatBytes(item.file.size) +
-        "</span></div><h3>" +
+        "</span></div><h4>" +
         safeName +
-        '</h3><p class="removed-copy">正在读取并重写图片容器…</p><div class="removed-tags"><span>本机处理中</span></div></div></article>'
+        '</h4><p class="result-meta">检查文件结构与 Alpha 通道…</p></div></article>'
       );
     }
 
     const result = item.result;
-    const tags = result.removed.slice(0, 3);
     return (
       '<article class="result-card" data-id="' +
       item.id +
       '">' +
-      '<div class="thumb"><img alt="已净化的 ' +
+      '<div class="thumb"><img loading="lazy" alt="已净化的 ' +
       safeName +
       '" src="' +
       item.previewUrl +
       '"></div>' +
       removeButton +
-      '<div class="result-body"><div class="status-line"><span class="status-badge">已净化</span><span class="result-size">' +
+      '<div class="result-body"><div class="status-line"><span class="status-badge">已完成</span><span class="result-size">' +
       window.Jingtu.formatBytes(result.byteLength) +
-      "</span></div><h3>" +
+      "</span></div><h4>" +
       safeName +
-      '</h3><p class="removed-copy"><strong>' +
-      removedDescription(item) +
-      "</strong> · " +
+      '</h4><p class="result-meta"><strong>' +
+      removalText(item) +
+      "</strong><br>" +
+      item.width +
+      " × " +
+      item.height +
+      " · " +
       result.format +
-      ' · 原画质</p><div class="removed-tags">' +
-      (tags.length
-        ? tags.map((tag) => "<span>" + escapeHtml(tag) + "</span>").join("")
-        : "<span>无可移除参数</span>") +
-      '</div><div class="card-actions"><button type="button" data-action="share-one" data-id="' +
+      "</p>" +
+      resultPrivacyTag(item) +
+      '<div class="card-actions"><button type="button" data-action="share-one" data-id="' +
       item.id +
       '">保存这张</button><button type="button" data-action="download-one" data-id="' +
       item.id +
@@ -221,7 +591,7 @@
 
     elements.workspace.hidden = total === 0;
     elements.fileCount.textContent = String(total);
-    elements.resultGrid.innerHTML = state.items.map(renderCard).join("");
+    elements.resultGrid.innerHTML = renderResults();
 
     elements.progressWrap.hidden = !hasPending;
     if (hasPending) {
@@ -287,6 +657,22 @@
     showToast("已开始下载干净图片");
   }
 
+  function openGuide() {
+    if (typeof elements.saveGuide.showModal === "function") {
+      if (!elements.saveGuide.open) elements.saveGuide.showModal();
+    } else {
+      elements.saveGuide.setAttribute("open", "");
+    }
+  }
+
+  function closeGuide() {
+    if (typeof elements.saveGuide.close === "function" && elements.saveGuide.open) {
+      elements.saveGuide.close();
+    } else {
+      elements.saveGuide.removeAttribute("open");
+    }
+  }
+
   async function shareFiles(files) {
     if (!navigator.share) {
       openGuide();
@@ -295,14 +681,11 @@
     }
     if (navigator.canShare && !navigator.canShare({ files })) {
       openGuide();
-      showToast("当前浏览器无法一次分享多张，请使用 ZIP 下载");
+      showToast("无法一次分享这些图片，请使用 ZIP 下载");
       return;
     }
     try {
-      await navigator.share({
-        files,
-        title: "净图 · 已清除参数"
-      });
+      await navigator.share({ files, title: "净图 · 已深度净化" });
       showToast("已打开系统分享面板");
     } catch (error) {
       if (error && error.name === "AbortError") return;
@@ -318,13 +701,13 @@
   }
 
   async function shareAll() {
-    const items = getReadyItems();
-    if (!items.length) return;
+    const ready = getReadyItems();
+    if (!ready.length) return;
     if (state.items.some((item) => item.status === "processing" || item.status === "queued")) {
       showToast("请等待图片处理完成");
       return;
     }
-    await shareFiles(items.map(makeFile));
+    await shareFiles(ready.map(makeFile));
   }
 
   function zipFilename() {
@@ -376,22 +759,6 @@
     state.toastTimer = window.setTimeout(() => elements.toast.classList.remove("show"), 2800);
   }
 
-  function openGuide() {
-    if (typeof elements.saveGuide.showModal === "function") {
-      if (!elements.saveGuide.open) elements.saveGuide.showModal();
-    } else {
-      elements.saveGuide.setAttribute("open", "");
-    }
-  }
-
-  function closeGuide() {
-    if (typeof elements.saveGuide.close === "function" && elements.saveGuide.open) {
-      elements.saveGuide.close();
-    } else {
-      elements.saveGuide.removeAttribute("open");
-    }
-  }
-
   function handleCardClick(event) {
     const button = event.target.closest("button[data-action]");
     if (!button) return;
@@ -404,14 +771,11 @@
 
   elements.fileInput.addEventListener("change", (event) => addFiles(event.target.files));
   elements.addMoreButton.addEventListener("click", () => elements.fileInput.click());
-  elements.heroUploadButton.addEventListener("click", () => {
-    elements.tool.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.setTimeout(() => elements.fileInput.click(), 350);
-  });
   elements.clearButton.addEventListener("click", clearAll);
   elements.resultGrid.addEventListener("click", handleCardClick);
   elements.shareButton.addEventListener("click", shareAll);
   elements.downloadZipButton.addEventListener("click", downloadAll);
+  elements.autoArrange.addEventListener("change", render);
 
   elements.dropZone.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -461,7 +825,7 @@
 
   if ("serviceWorker" in navigator && /^https?:$/.test(window.location.protocol)) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch(() => {});
+      navigator.serviceWorker.register("./sw.js?v=5", { updateViaCache: "none" }).catch(() => {});
     });
   }
 
