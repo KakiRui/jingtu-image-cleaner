@@ -403,6 +403,35 @@
     return orientationName + " · 相近比例";
   }
 
+  function getOrderedOutputItems() {
+    const ready = getReadyItems();
+    if (!elements.autoArrange.checked) {
+      return ready.map((item) => ({ item, name: item.result.name }));
+    }
+
+    const groups = buildOrientationGroups(ready);
+    const ordered = [];
+    const included = new Set();
+    groups.forEach((group, groupIndex) => {
+      const groupNumber = String(groupIndex + 1).padStart(2, "0");
+      const orientationName =
+        group.orientation === "portrait" ? "竖图" : group.orientation === "landscape" ? "横图" : "方图";
+      group.items.forEach((item, itemIndex) => {
+        const itemNumber = String(itemIndex + 1).padStart(2, "0");
+        ordered.push({
+          item,
+          name: groupNumber + "-" + orientationName + "-" + itemNumber + "_" + item.result.name
+        });
+        included.add(item.id);
+      });
+    });
+
+    for (const item of ready) {
+      if (!included.has(item.id)) ordered.push({ item, name: item.result.name });
+    }
+    return ordered;
+  }
+
   function groupSymbol(orientation) {
     if (orientation === "portrait") {
       return '<svg viewBox="0 0 16 16"><rect x="4.5" y="2" width="7" height="12" rx="1"/></svg>';
@@ -630,8 +659,8 @@
     showToast("已清空当前列表");
   }
 
-  function makeFile(item) {
-    return new File([item.result.blob], item.result.name, {
+  function makeFile(item, name) {
+    return new File([item.result.blob], name || item.result.name, {
       type: item.result.mime,
       lastModified: Date.now()
     });
@@ -707,7 +736,7 @@
       showToast("请等待图片处理完成");
       return;
     }
-    await shareFiles(ready.map(makeFile));
+    await shareFiles(getOrderedOutputItems().map((entry) => makeFile(entry.item, entry.name)));
   }
 
   function zipFilename() {
@@ -737,7 +766,10 @@
     render();
     const originalText = elements.downloadZipButton.innerHTML;
     try {
-      const entries = items.map((item) => ({ name: item.result.name, blob: item.result.blob }));
+      const entries = getOrderedOutputItems().map((entry) => ({
+        name: entry.name,
+        blob: entry.item.result.blob
+      }));
       const zip = await window.Jingtu.createZip(entries, (done, total) => {
         elements.downloadZipButton.textContent = "打包中 " + done + "/" + total;
       });
@@ -825,7 +857,7 @@
 
   if ("serviceWorker" in navigator && /^https?:$/.test(window.location.protocol)) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js?v=5", { updateViaCache: "none" }).catch(() => {});
+      navigator.serviceWorker.register("./sw.js?v=6", { updateViaCache: "none" }).catch(() => {});
     });
   }
 
