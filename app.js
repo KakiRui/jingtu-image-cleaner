@@ -857,7 +857,7 @@
 
   if ("serviceWorker" in navigator && /^https?:$/.test(window.location.protocol)) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js?v=6", { updateViaCache: "none" }).catch(() => {});
+      navigator.serviceWorker.register("./sw.js?v=7", { updateViaCache: "none" }).catch(() => {});
     });
   }
 

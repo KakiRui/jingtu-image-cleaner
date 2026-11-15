@@ -1,4 +1,4 @@
-const CACHE_NAME = "jingtu-v6";
+const CACHE_NAME = "jingtu-v7";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./sanitizer.js", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
