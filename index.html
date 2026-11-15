@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="净图是一款在浏览器本地批量清除 AI 图片提示词、EXIF、XMP 等内容凭证的工具，图片不上传，画质不变。"
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; img-src 'self' blob: data:; media-src 'none'; object-src 'none'; frame-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'self'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#f5f2e9" />
+    <meta name="color-scheme" content="light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="净图" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>净图 · AI 图片隐私净化器</title>
+  </head>
+  <body>
+    <div class="page-texture" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="净图首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 38 38" role="img">
+            <path d="M8 5.5h15.8L31 12.7v19.8H8z" />
+            <path d="M23.8 5.5v7.2H31" />
+            <path d="m12.4 22.4 4.1 4.1 8.7-9.2" />
+          </svg>
+        </span>
+        <span class="brand-name">净图</span>
+        <span class="brand-en">JINGTU</span>
+      </a>
+
+      <div class="header-actions">
+        <button class="text-button" id="openSaveGuide" type="button">iPhone 保存指南</button>
+        <span class="local-pill"><span class="pulse-dot"></span>100% 本地处理</span>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow"><span>PRIVATE BY DESIGN</span> · AI 图片净化器</p>
+          <h1 id="heroTitle">图片干净，<br />灵感才真正<span>属于你。</span></h1>
+          <p class="hero-lead">
+            批量清除 AI 图片中的提示词、种子、模型参数与内容凭证。
+            像素和画质保持不变，图片始终留在你的设备里。
+          </p>
+          <div class="feature-list" aria-label="工具特点">
+            <span><i aria-hidden="true">✓</i> 无损原画质</span>
+            <span><i aria-hidden="true">✓</i> 整批处理</span>
+            <span><i aria-hidden="true">✓</i> 不上传服务器</span>
+          </div>
+        </div>
+
+        <div class="receipt" aria-label="参数清除报告示例">
+          <div class="receipt-top">
+            <div>
+              <span class="receipt-label">PRIVACY RECEIPT</span>
+              <strong>参数清除报告</strong>
+            </div>
+            <span class="receipt-number">NO. 001</span>
+          </div>
+          <div class="receipt-scan">
+            <div class="file-sheet file-before">
+              <span class="sheet-tag">原图</span>
+              <div class="sheet-mountain"></div>
+              <span class="meta-line w-70"></span>
+              <span class="meta-line w-90"></span>
+              <span class="meta-line w-55"></span>
+              <span class="meta-chip">PROMPT</span>
+              <span class="meta-chip">SEED 48291</span>
+            </div>
+            <div class="scan-arrow" aria-hidden="true">
+              <span></span>
+              <svg viewBox="0 0 24 24"><path d="M5 12h13M14 7l5 5-5 5" /></svg>
+            </div>
+            <div class="file-sheet file-after">
+              <span class="sheet-tag clean">净图</span>
+              <div class="sheet-mountain clean"></div>
+              <span class="clean-check" aria-hidden="true">✓</span>
+              <strong>0 项附加参数</strong>
+              <small>原尺寸 · 原画质</small>
+            </div>
+          </div>
+          <div class="receipt-foot">
+            <span>EXIF</span><span>XMP</span><span>C2PA</span><span>PNG TEXT</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="tool-shell" id="tool" aria-labelledby="toolTitle">
+        <div class="section-heading">
+          <div>
+            <span class="step-label">01 / 导入</span>
+            <h2 id="toolTitle">把图片放进来</h2>
+          </div>
+          <p>支持 JPG、PNG、WebP，可一次选择多张</p>
+        </div>
+
+        <label class="drop-zone" id="dropZone" for="fileInput" tabindex="0">
+          <input
+            id="fileInput"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            multiple
+          />
+          <span class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48">
+              <path d="M24 31V9m0 0-8 8m8-8 8 8" />
+              <path d="M10 29v8a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3v-8" />
+            </svg>
+          </span>
+          <span class="drop-title">点击选择图片 <small>或拖到这里</small></span>
+          <span class="drop-sub">也可以直接粘贴剪贴板中的图片</span>
+          <span class="choose-button">选择图片</span>
+          <span class="format-tags" aria-hidden="true">
+            <i>JPG</i><i>PNG</i><i>WEBP</i>
+          </span>
+        </label>
+
+        <div class="workspace" id="workspace" hidden>
+          <div class="workspace-head">
+            <div>
+              <p class="step-label">02 / 净化结果</p>
+              <h2><span id="fileCount">0</span> 张图片</h2>
+            </div>
+            <div class="workspace-actions">
+              <button class="small-button" id="addMoreButton" type="button">继续添加</button>
+              <button class="small-button quiet" id="clearButton" type="button">全部清除</button>
+            </div>
+          </div>
+
+          <div class="progress-wrap" id="progressWrap" hidden>
+            <div class="progress-copy">
+              <span id="progressText">正在净化图片…</span>
+              <strong id="progressCount">0 / 0</strong>
+            </div>
+            <div class="progress-track"><span id="progressBar"></span></div>
+          </div>
+
+          <div class="result-grid" id="resultGrid" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="how-it-works" aria-labelledby="howTitle">
+        <div class="section-heading compact">
+          <div>
+            <span class="step-label">HOW IT WORKS</span>
+            <h2 id="howTitle">干净，只要三步</h2>
+          </div>
+          <p>没有注册、没有上传队列、没有隐藏费用</p>
+        </div>
+        <div class="step-grid">
+          <article>
+            <span class="number">01</span>
+            <div class="step-icon">
+              <svg viewBox="0 0 32 32"><path d="M7 5h18v22H7z" /><path d="m11 21 4-5 3 3 3-4 3 6" /><circle cx="12" cy="11" r="2" /></svg>
+            </div>
+            <h3>本地选择图片</h3>
+            <p>浏览器直接读取原文件，图片不会离开你的 iPhone。</p>
+          </article>
+          <article>
+            <span class="number">02</span>
+            <div class="step-icon">
+              <svg viewBox="0 0 32 32"><path d="M7 5h13l5 5v17H7z" /><path d="M20 5v6h5" /><path d="m11 20 3 3 6-7" /></svg>
+            </div>
+            <h3>剥离隐藏参数</h3>
+            <p>移除 EXIF、XMP、IPTC、AI 生成参数与 C2PA 等内容凭证。</p>
+          </article>
+          <article>
+            <span class="number">03</span>
+            <div class="step-icon">
+              <svg viewBox="0 0 32 32"><rect x="6" y="9" width="20" height="17" rx="3" /><path d="M11 9V6h10v3M11 18h10M11 22h6" /></svg>
+            </div>
+            <h3>一次存入相册</h3>
+            <p>点“保存到相册”，在系统分享面板中整批存储图片。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="privacy-section" aria-labelledby="privacyTitle">
+        <div class="privacy-intro">
+          <span class="privacy-icon" aria-hidden="true">
+            <svg viewBox="0 0 40 40">
+              <path d="M20 4 33 9v10c0 8.3-5.5 13.9-13 17-7.5-3.1-13-8.7-13-17V9z" />
+              <path d="m14 20 4 4 8-9" />
+            </svg>
+          </span>
+          <p class="step-label">PRIVACY, EXPLAINED</p>
+          <h2 id="privacyTitle">为什么可以放心用？</h2>
+          <p>
+            净图没有后端，也没有上传接口。所有解析与清理都由当前浏览器完成；
+            断网后依然可以使用。
+          </p>
+        </div>
+        <div class="privacy-details">
+          <details open>
+            <summary><span>01</span>具体会清除哪些信息？<i></i></summary>
+            <p>
+              JPEG 中移除 Exif/XMP/IPTC、C2PA、注释及扩展段；PNG 中移除文本、压缩文本、eXIf
+              和自定义辅助数据块；WebP 中移除 EXIF、XMP 与非显示辅助块。原图像素不会重新压缩。
+            </p>
+          </details>
+          <details>
+            <summary><span>02</span>为什么画质不会下降？<i></i></summary>
+            <p>
+              净图直接重写图片容器并保留原始像素数据，不经过二次截图或压缩。清理后的文件尺寸可能略微变小，但分辨率和画面内容保持不变。
+            </p>
+          </details>
+          <details>
+            <summary><span>03</span>它能去除水印或画面里的文字吗？<i></i></summary>
+            <p>
+              不能。净图处理的是文件内部不可见的附加数据，不会改变画面像素。若提示词或水印已经印在画面中，需要另行修图。
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <p class="eyebrow">YOUR IMAGE, YOUR DATA</p>
+        <h2>让下一张作品，只留下作品。</h2>
+        <button class="primary-button large" id="heroUploadButton" type="button">
+          开始净化图片
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M14 7l5 5-5 5" /></svg>
+        </button>
+        <p class="cta-note">无需登录 · 不占云端空间 · 可添加到主屏幕</p>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-brand">
+        <span class="brand-mark small" aria-hidden="true">
+          <svg viewBox="0 0 38 38">
+            <path d="M8 5.5h15.8L31 12.7v19.8H8z" />
+            <path d="M23.8 5.5v7.2H31" />
+            <path d="m12.4 22.4 4.1 4.1 8.7-9.2" />
+          </svg>
+        </span>
+        <span>净图 JINGTU</span>
+      </div>
+      <p>本地运行 · 像素无损 · 为分享而设计</p>
+      <button class="text-button" id="footerGuide" type="button">保存到 iPhone 相册</button>
+    </footer>
+
+    <div class="sticky-actions" id="stickyActions" hidden>
+      <div class="sticky-summary">
+        <span class="privacy-mini"><i></i>已在本机处理</span>
+        <strong><span id="readyCount">0</span> 张可以保存</strong>
+      </div>
+      <div class="sticky-buttons">
+        <button class="secondary-button" id="downloadZipButton" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>
+          ZIP 下载
+        </button>
+        <button class="primary-button" id="shareButton" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L8 8m4-4 4 4" /><path d="M7 11H4v9h16v-9h-3" /></svg>
+          保存到相册
+        </button>
+      </div>
+    </div>
+
+    <dialog class="guide-dialog" id="saveGuide">
+      <button class="dialog-close" id="closeGuide" type="button" aria-label="关闭">×</button>
+      <span class="dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 40 40">
+          <rect x="10" y="4" width="20" height="32" rx="4" />
+          <path d="M17 8h6M18 31h4" />
+        </svg>
+      </span>
+      <p class="step-label">IPHONE SAVE GUIDE</p>
+      <h2>一次保存整批图片</h2>
+      <ol>
+        <li><span>1</span><p>处理完成后，点击底部的<strong>“保存到相册”</strong>。</p></li>
+        <li><span>2</span><p>在 iOS 系统分享面板中点击<strong>“存储图像”</strong>或“存储到照片”。</p></li>
+        <li><span>3</span><p>系统会一次存入所选的全部图片，再用“照片”App 统一查看。</p></li>
+      </ol>
+      <div class="guide-tip">
+        <strong>系统版本提示</strong>
+        <p>建议使用 iOS 15.4 或更高版本的 Safari。若分享面板没有“存储图像”，可改用“ZIP 下载”，在“文件”App 中解压后多选图片并存储到相册。</p>
+      </div>
+      <button class="primary-button wide dialog-ok" id="guideDone" type="button">知道了</button>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./sanitizer.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
